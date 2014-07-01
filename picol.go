@@ -14,41 +14,44 @@ const (
 	PICOL_CONTINUE
 )
 
-type picolVar struct {
+type Var struct {
 	name, val string
-	next      *picolVar
+	next      *Var
 }
 
-type picolCmdFunc func(i *picolInterp, argc int, argv []string, privdata interface{}) int
+type CmdFunc func(i *Interp, argv []string, privdata interface{}) int
 
-type picolCmd struct {
+type Cmd struct {
 	name     string
-	fn       picolCmdFunc
+	fn       CmdFunc
 	privdata interface{}
-	next     *picolCmd
+	next     *Cmd
 }
 
-type picolCallFrame struct {
-	vars   *picolVar
-	parent *picolCallFrame
+type CallFrame struct {
+	vars   *Var
+	parent *CallFrame
 }
 
-type picolInterp struct {
+type Interp struct {
 	level     int
-	callframe *picolCallFrame
-	commands  *picolCmd
+	callframe *CallFrame
+	commands  *Cmd
 	result    string
 }
 
-func InitInterp() *picolInterp {
-	return &picolInterp{0, &picolCallFrame{}, nil, ""}
+func InitInterp() *Interp {
+	return &Interp{0, &CallFrame{}, nil, ""}
 }
 
-func (i *picolInterp) SetResult(s string) {
+func (i *Interp) Result() string {
+	return i.result
+}
+func (i *Interp) SetResult(s string) {
 	i.result = s
 }
 
-func (i *picolInterp) GetVar(name string) *picolVar {
+func (i *Interp) GetVar(name string) *Var {
 	for v := i.callframe.vars; v != nil; v = v.next {
 		if v.name == name {
 			return v
@@ -57,13 +60,13 @@ func (i *picolInterp) GetVar(name string) *picolVar {
 	return nil
 }
 
-func (i *picolInterp) SetVar(name, val string) int {
-	v := &picolVar{name, val, i.callframe.vars}
+func (i *Interp) SetVar(name, val string) int {
+	v := &Var{name, val, i.callframe.vars}
 	i.callframe.vars = v
 	return PICOL_OK
 }
 
-func (i *picolInterp) GetCommand(name string) *picolCmd {
+func (i *Interp) GetCommand(name string) *Cmd {
 	for c := i.commands; c != nil; c = c.next {
 		if c.name == name {
 			return c
@@ -72,7 +75,7 @@ func (i *picolInterp) GetCommand(name string) *picolCmd {
 	return nil
 }
 
-func (i *picolInterp) RegisterCommand(name string, fn picolCmdFunc, privdata interface{}) int {
+func (i *Interp) RegisterCommand(name string, fn CmdFunc, privdata interface{}) int {
 	c := i.GetCommand(name)
 	if c != nil {
 		errbuf := fmt.Sprintf("Command '%s' already defined", name)
@@ -80,15 +83,13 @@ func (i *picolInterp) RegisterCommand(name string, fn picolCmdFunc, privdata int
 		return PICOL_ERR
 	}
 
-	c = &picolCmd{name, fn, privdata, i.commands}
+	c = &Cmd{name, fn, privdata, i.commands}
 	i.commands = c
 	return PICOL_OK
 }
 
 /* EVAL! */
-func (i *picolInterp) Eval(t string) int {
-	//fmt.Printf("::'%s'\n", t)
-
+func (i *Interp) Eval(t string) int {
 	p := InitParser(t)
 	i.SetResult("")
 
@@ -135,8 +136,6 @@ func (i *picolInterp) Eval(t string) int {
 
 		// We have a complete command + args. Call it!
 		if p.type_ == PT_EOL {
-			//struct picolCmd *c;
-			//free(t);
 			prevtype = p.type_
 			if argc != 0 {
 				c := i.GetCommand(argv[0])
@@ -146,14 +145,12 @@ func (i *picolInterp) Eval(t string) int {
 					retcode = PICOL_ERR
 					goto err
 				}
-				retcode = c.fn(i, argc, argv, c.privdata)
+				retcode = c.fn(i, argv, c.privdata)
 				if retcode != PICOL_OK {
 					goto err
 				}
 			}
 			// Prepare for the next command
-			//for (j = 0; j < argc; j++) free(argv[j]);
-			//free(argv);
 			argv = []string{}
 			argc = 0
 			continue
@@ -163,9 +160,6 @@ func (i *picolInterp) Eval(t string) int {
 		if prevtype == PT_SEP || prevtype == PT_EOL {
 			argv = append(argv, t)
 			argc++
-			//argv = realloc(argv, sizeof(char*)*(argc+1));
-			//argv[argc] = t;
-			//argc++;
 		} else { // Interpolation
 			argv[argc-1] = strings.Join([]string{argv[argc-1], t}, "")
 		}
@@ -176,15 +170,15 @@ err:
 }
 
 /* ACTUAL COMMANDS! */
-func picolArityErr(i *picolInterp, name string, argv []string) int {
+func ArityErr(i *Interp, name string, argv []string) int {
 	buf := fmt.Sprintf("Wrong number of args for %s", name, argv)
 	i.SetResult(buf)
 	return PICOL_ERR
 }
 
-func picolCommandMath(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandMath(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	//*
 	a, _ := strconv.Atoi(argv[1])
@@ -235,27 +229,26 @@ func picolCommandMath(i *picolInterp, argc int, argv []string, pd interface{}) i
 	return PICOL_OK
 }
 
-func picolCommandSet(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandSet(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	i.SetVar(argv[1], argv[2])
 	i.SetResult(argv[2])
 	return PICOL_OK
 }
 
-func picolCommandPuts(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandPuts(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 2 {
-		//fmt.Println(len(argv), argv[2])
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	fmt.Println(argv[1])
 	return PICOL_OK
 }
 
-func picolCommandIf(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandIf(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 && len(argv) != 5 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	if retcode := i.Eval(argv[1]); retcode != PICOL_OK {
 		return retcode
@@ -268,9 +261,9 @@ func picolCommandIf(i *picolInterp, argc int, argv []string, pd interface{}) int
 	return PICOL_OK
 }
 
-func picolCommandWhile(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandWhile(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	for {
 		retcode := i.Eval(argv[1])
@@ -293,9 +286,9 @@ func picolCommandWhile(i *picolInterp, argc int, argv []string, pd interface{}) 
 	}
 }
 
-func picolCommandRetCodes(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandRetCodes(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 1 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	switch argv[0] {
 	case "break":
@@ -304,25 +297,17 @@ func picolCommandRetCodes(i *picolInterp, argc int, argv []string, pd interface{
 		return PICOL_CONTINUE
 	}
 	return PICOL_OK
-
-	/*
-	   if (argc != 1) return picolArityErr(i,argv[0]);
-	   if (strcmp(argv[0],"break") == 0) return PICOL_BREAK;
-	   else if (strcmp(argv[0],"continue") == 0) return PICOL_CONTINUE;
-	   return PICOL_OK;
-	*/
 }
 
-func picolDropCallFrame(i *picolInterp) {
+func DropCallFrame(i *Interp) {
 	i.callframe = i.callframe.parent
 }
 
-func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 	var x []string
 
 	if pd, ok := pd.([]string); ok {
 		x = pd
-		//fmt.Println(x)
 	} else {
 		return PICOL_OK
 	}
@@ -336,7 +321,7 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 
 	errcode := PICOL_OK
 
-	cf := &picolCallFrame{vars: nil, parent: i.callframe}
+	cf := &CallFrame{vars: nil, parent: i.callframe}
 	i.callframe = cf
 
 	for {
@@ -358,7 +343,7 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 			p = p[1:1]
 		}
 		arity++
-		if arity > argc-1 {
+		if arity > len(argv)-1 {
 			goto arityerr
 		}
 		i.SetVar(start, argv[arity])
@@ -370,7 +355,7 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 		}
 	}
 
-	if arity != argc-1 {
+	if arity != len(argv)-1 {
 		goto arityerr
 	}
 	errcode = i.Eval(body)
@@ -378,27 +363,27 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 	if errcode == PICOL_RETURN {
 		errcode = PICOL_OK
 	}
-	picolDropCallFrame(i) // remove the called proc callframe
+	DropCallFrame(i) // remove the called proc callframe
 	return errcode
 arityerr:
 	errbuf := fmt.Sprintf("Proc '%s' called with wrong arg num", argv[0])
 	i.SetResult(errbuf)
-	picolDropCallFrame(i) // remove the called proc callframe
+	DropCallFrame(i) // remove the called proc callframe
 	return PICOL_ERR
 }
 
-func picolCommandProc(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandProc(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 4 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	// FIXME maybe create copy
 	procdata := []string{argv[2], argv[3]}
-	return i.RegisterCommand(argv[1], picolCommandCallProc, procdata)
+	return i.RegisterCommand(argv[1], CommandCallProc, procdata)
 }
 
-func picolCommandReturn(i *picolInterp, argc int, argv []string, pd interface{}) int {
+func CommandReturn(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 1 && len(argv) != 2 {
-		return picolArityErr(i, argv[0], argv)
+		return ArityErr(i, argv[0], argv)
 	}
 	var r string
 	if len(argv) == 2 {
@@ -408,17 +393,17 @@ func picolCommandReturn(i *picolInterp, argc int, argv []string, pd interface{})
 	return PICOL_RETURN
 }
 
-func (i *picolInterp) RegisterCoreCommands() {
+func (i *Interp) RegisterCoreCommands() {
 	name := [...]string{"+", "-", "*", "/", ">", ">=", "<", "<=", "==", "!="}
 	for _, n := range name {
-		i.RegisterCommand(n, picolCommandMath, nil)
+		i.RegisterCommand(n, CommandMath, nil)
 	}
-	i.RegisterCommand("set", picolCommandSet, nil)
-	i.RegisterCommand("puts", picolCommandPuts, nil)
-	i.RegisterCommand("if", picolCommandIf, nil)
-	i.RegisterCommand("while", picolCommandWhile, nil)
-	i.RegisterCommand("break", picolCommandRetCodes, nil)
-	i.RegisterCommand("continue", picolCommandRetCodes, nil)
-	i.RegisterCommand("proc", picolCommandProc, nil)
-	i.RegisterCommand("return", picolCommandReturn, nil)
+	i.RegisterCommand("set", CommandSet, nil)
+	i.RegisterCommand("puts", CommandPuts, nil)
+	i.RegisterCommand("if", CommandIf, nil)
+	i.RegisterCommand("while", CommandWhile, nil)
+	i.RegisterCommand("break", CommandRetCodes, nil)
+	i.RegisterCommand("continue", CommandRetCodes, nil)
+	i.RegisterCommand("proc", CommandProc, nil)
+	i.RegisterCommand("return", CommandReturn, nil)
 }
