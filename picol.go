@@ -1,3 +1,4 @@
+// TODO::::::::::::::::::::::::::: tests for parser !!!!!!!!!!!!!!!!!!!!!!
 package main
 
 import (
@@ -55,447 +56,7 @@ const (
 	PICOL_RETURN
 	PICOL_BREAK
 	PICOL_CONTINUE
-
-	PT_ESC = iota
-	PT_STR
-	PT_CMD
-	PT_VAR
-	PT_SEP
-	PT_EOL
-	PT_EOF
 )
-
-type picolParser struct {
-	text              string
-	p, start, end, ln int
-	insidequote       int
-	type_             int
-
-	//char *text
-	//char *p /* current text position */
-	//int len /* remaining length */
-	//char *start /* token start */
-	//char *end /* token end */
-	//int type /* token type, PT_... */
-	//int insidequote /* True if inside " " */
-}
-
-func picolInitParser(text string) *picolParser {
-	return &picolParser{text, 0, 0, 0, len(text), 0, PT_EOL}
-	/*
-	   p->text = p->p = text;
-	   p->len = strlen(text);
-	   p->start = 0; p->end = 0; p->insidequote = 0;
-	   p->type = PT_EOL;
-	*/
-}
-
-func (p *picolParser) picolParseSep() int {
-	p.start = p.p
-	c := p.text[p.p]
-	for ; c == ' ' || c == '\t' || c == '\n' || c == '\r'; c = p.text[p.p] {
-		p.p++
-		p.ln--
-		if p.p == len(p.text) {
-			break
-		}
-	}
-	p.end = p.p - 1
-	p.type_ = PT_SEP
-	return PICOL_OK
-
-	/*
-	   p->start = p->p;
-	   while(*p->p == ' ' || *p->p == '\t' || *p->p == '\n' || *p->p == '\r') {
-	       p->p++; p->len--;
-	   }
-	   p->end = p->p-1;
-	   p->type = PT_SEP;
-	*/
-}
-
-func (p *picolParser) picolParseEol() int {
-	// XXX add ';' and PT_EOL
-	p.start = p.p
-
-	c := p.text[p.p]
-	for ; c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';'; c = p.text[p.p] {
-		p.p++
-		p.ln--
-		if p.p == len(p.text) {
-			break
-		}
-	}
-	p.end = p.p - 1
-	p.type_ = PT_EOL
-	return PICOL_OK
-
-	/*
-	   p->start = p->p;
-	   while(*p->p == ' ' || *p->p == '\t' || *p->p == '\n' || *p->p == '\r' ||
-	         *p->p == ';')
-	   {
-	       p->p++; p->len--;
-	   }
-	   p->end = p->p-1;
-	   p->type = PT_EOL;
-	*/
-	//return PICOL_OK
-}
-
-func (p *picolParser) picolParseCommand() int {
-	level, blevel := 1, 0
-
-	p.p++
-	p.ln--
-	p.start = p.p
-
-Loop:
-	for {
-		switch {
-		case p.ln == 0 || len(p.text)-1 >= p.p:
-			break Loop
-		case p.text[p.p] == '[' && blevel == 0:
-			level++
-		case p.text[p.p] == ']' && blevel == 0:
-			level--
-			if level == 0 {
-				break Loop
-			}
-		case p.text[p.p] == '\\':
-			p.p++
-			p.ln--
-
-		case p.text[p.p] == '{':
-			blevel++
-		case p.text[p.p] == '}':
-			if blevel != 0 {
-				blevel--
-			}
-		}
-		p.p++
-		p.ln--
-	}
-	p.end = p.p - 1
-	p.type_ = PT_CMD
-	if p.text[p.p] == ']' {
-		p.p++
-		p.ln--
-	}
-	return PICOL_OK
-
-	/*
-	   int level = 1;
-	   int blevel = 0;
-	   p->start = ++p->p; p->len--;
-	   while (1) {
-	       if (p->len == 0) {
-	           break;
-	       } else if (*p->p == '[' && blevel == 0) {
-	           level++;
-	       } else if (*p->p == ']' && blevel == 0) {
-	           if (!--level) break;
-	       } else if (*p->p == '\\') {
-	           p->p++; p->len--;
-	       } else if (*p->p == '{') {
-	           blevel++;
-	       } else if (*p->p == '}') {
-	           if (blevel != 0) blevel--;
-	       }
-	       p->p++; p->len--;
-	   }
-	   p->end = p->p-1;
-	   p->type = PT_CMD;
-	   if (*p->p == ']') {
-	       p->p++; p->len--;
-	   }
-	*/
-}
-
-func (p *picolParser) picolParseVar() int {
-	// skip the $
-	p.p++
-	p.ln--
-	p.start = p.p
-
-	for {
-		c := p.text[p.p]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
-			p.p++
-			p.ln--
-			continue
-		}
-		break
-	}
-
-	if p.start == p.p { // It's just a single char string "$"
-		p.start = p.p - 1
-		p.end = p.p - 1
-		p.type_ = PT_STR
-	} else {
-		p.end = p.p - 1
-		p.type_ = PT_VAR
-	}
-	return PICOL_OK
-
-	/*
-	   p->start = ++p->p; p->len--; // skip the $
-	   while(1) {
-	       if ((*p->p >= 'a' && *p->p <= 'z') || (*p->p >= 'A' && *p->p <= 'Z') ||
-	           (*p->p >= '0' && *p->p <= '9') || *p->p == '_')
-	       {
-	           p->p++; p->len--; continue;
-	       }
-	       break;
-	   }
-	   if (p->start == p->p) { // It's just a single char string "$"
-	       p->start = p->end = p->p-1;
-	       p->type = PT_STR;
-	   } else {
-	       p->end = p->p-1;
-	       p->type = PT_VAR;
-	   }
-	*/
-}
-
-func (p *picolParser) picolParseBrace() int {
-	level := 1
-	p.p++
-	p.ln--
-	p.start = p.p
-
-	for {
-		c := p.text[p.p]
-		switch {
-		case p.ln >= 2 && c == '\\':
-			p.p++
-			p.ln--
-		case p.ln == 0 || c == '}':
-			level--
-			if level == 0 || p.ln == 0 {
-				p.end = p.p - 1
-				if p.ln != 0 {
-					// Skip final closed brace
-					p.p++
-					p.ln--
-
-				}
-				p.type_ = PT_STR
-				return PICOL_OK
-			}
-		case c == '{':
-			level++
-		}
-		p.p++
-		p.ln--
-	}
-	return PICOL_OK /* unreached */
-
-	/*
-	   int level = 1;
-	   p->start = ++p->p; p->len--;
-	   while(1) {
-	       if (p->len >= 2 && *p->p == '\\') {
-	           p->p++; p->len--;
-	       } else if (p->len == 0 || *p->p == '}') {
-	           level--;
-	           if (level == 0 || p->len == 0) {
-	               p->end = p->p-1;
-	               if (p->len) {
-	                   p->p++; p->len--; // Skip final closed brace
-	               }
-	               p->type = PT_STR;
-	               return PICOL_OK;
-	           }
-	       } else if (*p->p == '{')
-	           level++;
-	       p->p++; p->len--;
-	   }
-	*/
-}
-
-func (p *picolParser) picolParseString() int {
-	newword := p.type_ == PT_SEP || p.type_ == PT_EOL || p.type_ == PT_STR
-	c := p.text[p.p]
-	if newword && c == '{' {
-		return p.picolParseBrace()
-	} else if newword && c == '"' {
-		p.insidequote = 1
-		p.p++
-		p.ln--
-	}
-
-	p.start = p.p
-
-	for {
-		if p.ln == 0 {
-			p.end = p.p - 1
-			p.type_ = PT_ESC
-			return PICOL_OK
-		}
-		switch p.text[p.p] {
-		case '\\':
-			if p.ln >= 2 {
-				p.p++
-				p.ln--
-			}
-		case '$':
-		case '[':
-			p.end = p.p - 1
-			p.type_ = PT_ESC
-			return PICOL_OK
-		case ' ', '\t', '\n', '\r', ';':
-			if p.insidequote == 0 {
-				p.end = p.p - 1
-				p.type_ = PT_ESC
-				return PICOL_OK
-			}
-		case '"':
-			if p.insidequote != 0 {
-				p.end = p.p - 1
-				p.type_ = PT_ESC
-				p.p++
-				p.ln--
-				p.insidequote = 0
-				return PICOL_OK
-			}
-		}
-		p.p++
-		p.ln--
-	}
-	return PICOL_OK /* unreached */
-
-	/*
-	   int newword = (p->type == PT_SEP || p->type == PT_EOL || p->type == PT_STR);
-	   if (newword && *p->p == '{') return picolParseBrace(p);
-	   else if (newword && *p->p == '"') {
-	       p->insidequote = 1;
-	       p->p++; p->len--;
-	   }
-	   p->start = p->p;
-	   while(1) {
-	       if (p->len == 0) {
-	           p->end = p->p-1;
-	           p->type = PT_ESC;
-	           return PICOL_OK;
-	       }
-	       switch(*p->p) {
-	       case '\\':
-	           if (p->len >= 2) {
-	               p->p++; p->len--;
-	           }
-	           break;
-	       case '$': case '[':
-	           p->end = p->p-1;
-	           p->type = PT_ESC;
-	           return PICOL_OK;
-	       case ' ': case '\t': case '\n': case '\r': case ';':
-	           if (!p->insidequote) {
-	               p->end = p->p-1;
-	               p->type = PT_ESC;
-	               return PICOL_OK;
-	           }
-	           break;
-	       case '"':
-	           if (p->insidequote) {
-	              p->end = p->p-1;
-	               p->type = PT_ESC;
-	               p->p++; p->len--;
-	               p->insidequote = 0;
-	               return PICOL_OK;
-	           }
-	           break;
-	       }
-	       p->p++; p->len--;
-	   }
-	*/
-}
-
-func (p *picolParser) picolParseComment() int {
-	for p.ln != 0 && p.text[p.p] != '\n' {
-		p.p++
-		p.ln--
-	}
-	return PICOL_OK
-
-	/*
-	   while(p->len && *p->p != '\n') {
-	       p->p++; p->len--;
-	   }
-	*/
-}
-
-func (p *picolParser) picolGetToken() int {
-	for {
-		if p.ln == 0 {
-			if p.type_ != PT_EOL && p.type_ != PT_EOF {
-				p.type_ = PT_EOL
-			} else {
-				p.type_ = PT_EOF
-			}
-			return PICOL_OK
-		}
-
-		switch p.text[p.p] {
-		case ' ', '\t', '\r':
-			if p.insidequote != 0 {
-				return p.picolParseString()
-			}
-			return p.picolParseSep()
-		case '\n', ';':
-			if p.insidequote != 0 {
-				return p.picolParseString()
-			}
-			return p.picolParseEol()
-		case '[':
-			return p.picolParseCommand()
-		case '$':
-			return p.picolParseVar()
-		case '#':
-			if p.type_ == PT_EOL {
-				p.picolParseComment()
-				continue
-			}
-			return p.picolParseString()
-		default:
-			return p.picolParseString()
-		}
-	}
-	return PICOL_OK /* unreached */
-
-	/*
-	   while(1) {
-	       if (!p->len) {
-	           if (p->type != PT_EOL && p->type != PT_EOF)
-	               p->type = PT_EOL;
-	           else
-	               p->type = PT_EOF;
-	           return PICOL_OK;
-	       }
-	       switch(*p->p) {
-	       case ' ': case '\t': case '\r':
-	           if (p->insidequote) return picolParseString(p);
-	           return picolParseSep(p);
-	       case '\n': case ';':
-	           if (p->insidequote) return picolParseString(p);
-	           return picolParseEol(p);
-	       case '[':
-	           return picolParseCommand(p);
-	       case '$':
-	           return picolParseVar(p);
-	       case '#':
-	           if (p->type == PT_EOL) {
-	               picolParseComment(p);
-	               continue;
-	           }
-	           return picolParseString(p);
-	       default:
-	           return picolParseString(p);
-	       }
-	   }
-	*/
-	//return PICOL_OK /* unreached */
-}
 
 /*
 
@@ -654,9 +215,9 @@ func (i *picolInterp) RegisterCommand(name string, fn picolCmdFunc, privdata int
 
 /* EVAL! */
 func (i *picolInterp) Eval(t string) int {
-	fmt.Printf("::'%s'\n", t)
+	//fmt.Printf("::'%s'\n", t)
 
-	p := picolInitParser(t)
+	p := InitParser(t)
 	i.SetResult("")
 
 	retcode := PICOL_OK
@@ -667,13 +228,15 @@ func (i *picolInterp) Eval(t string) int {
 	for {
 		prevtype := p.type_
 		// XXX
-		_ = p.picolGetToken()
+		_ = p.GetToken()
 		if p.type_ == PT_EOF {
 			break
 		}
 		t := p.text[p.start : p.end+1]
+
 		switch p.type_ {
 		case PT_VAR:
+			//fmt.Printf("PT_VAR token[%d]:'%s'\n", p.type_, t)
 			v := i.GetVar(t)
 			if v == nil {
 				errbuf := fmt.Sprintf("No such variable '%s'", t)
@@ -683,17 +246,19 @@ func (i *picolInterp) Eval(t string) int {
 			}
 			t = v.val
 		case PT_CMD:
+			//fmt.Printf("PT_CMD token[%d]:'%s'\n", p.type_, t)
 			retcode = i.Eval(t)
 			if retcode != PICOL_OK {
 				goto err
 			}
 			t = i.result
 		case PT_ESC:
+			//fmt.Printf("PT_ESC token[%d]:'%s'\n", p.type_, t)
 			// XXX: escape handling missing!
 		case PT_SEP:
+			//fmt.Printf("PT_SEP token[%d]:'%s'\n", p.type_, t)
 			prevtype = p.type_
 			continue
-
 		}
 
 		// We have a complete command + args. Call it!
@@ -934,7 +499,7 @@ func picolCommandSet(i *picolInterp, argc int, argv []string, pd interface{}) in
 
 func picolCommandPuts(i *picolInterp, argc int, argv []string, pd interface{}) int {
 	if len(argv) != 2 {
-		fmt.Println(len(argv), argv[2])
+		//fmt.Println(len(argv), argv[2])
 		return picolArityErr(i, argv[0], argv)
 	}
 	fmt.Println(argv[1])
@@ -956,8 +521,8 @@ func picolCommandIf(i *picolInterp, argc int, argv []string, pd interface{}) int
 	}
 	if r, _ := strconv.Atoi(i.result); r != 0 {
 		return i.Eval(argv[2])
-	} else if argc == 5 {
-		return i.Eval(argv[5])
+	} else if len(argv) == 5 {
+		return i.Eval(argv[4])
 	}
 	return PICOL_OK
 
@@ -1052,16 +617,16 @@ func picolDropCallFrame(i *picolInterp) {
 }
 
 func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{}) int {
-	fmt.Println(argv, pd)
+	//fmt.Println("picolCommandCallProc", argv, pd)
 	var x []string
 
 	if pd, ok := pd.([]string); ok {
 		x = pd
-		fmt.Println(x)
+		//fmt.Println(x)
 	} else {
 		return PICOL_OK
 	}
-	return PICOL_OK
+	//return PICOL_OK
 
 	alist := x[0]
 	body := x[1]
@@ -1097,8 +662,11 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 		if arity > argc-1 {
 			goto arityerr
 		}
+		//fmt.Println("setv", start, argv[arity])
 		i.SetVar(start, argv[arity])
-		p = p[1:]
+		if len(p) != 0 {
+			p = p[1:]
+		}
 		if done {
 			break
 		}
@@ -1109,12 +677,14 @@ func picolCommandCallProc(i *picolInterp, argc int, argv []string, pd interface{
 		goto arityerr
 	}
 	errcode = i.Eval(body)
+	//fmt.Println("eval", errcode)
 	if errcode == PICOL_RETURN {
 		errcode = PICOL_OK
 	}
 	picolDropCallFrame(i) // remove the called proc callframe
 	return errcode
 arityerr:
+	//fmt.Println("arityerr", errcode)
 	errbuf := fmt.Sprintf("Proc '%s' called with wrong arg num", argv[0])
 	//snprintf(errbuf,1024,"Proc '%s' called with wrong arg num",argv[0]);
 	i.SetResult(errbuf)
@@ -1185,7 +755,7 @@ arityerr:
 }
 
 func picolCommandProc(i *picolInterp, argc int, argv []string, pd interface{}) int {
-	fmt.Println("proc", argv, pd)
+	//fmt.Println("proc", argv, pd)
 
 	if len(argv) != 4 {
 		return picolArityErr(i, argv[0], argv)
@@ -1213,12 +783,6 @@ func picolCommandReturn(i *picolInterp, argc int, argv []string, pd interface{})
 	}
 	i.SetResult(r)
 	return PICOL_RETURN
-
-	/*
-	   if (argc != 1 && argc != 2) return picolArityErr(i,argv[0]);
-	   picolSetResult(i, (argc == 2) ? argv[1] : "");
-	   return PICOL_RETURN;
-	*/
 }
 
 func (i *picolInterp) RegisterCoreCommands() {
@@ -1232,21 +796,6 @@ func (i *picolInterp) RegisterCoreCommands() {
 	i.RegisterCommand("while", picolCommandWhile, nil)
 	i.RegisterCommand("break", picolCommandRetCodes, nil)
 	i.RegisterCommand("continue", picolCommandRetCodes, nil)
-
 	i.RegisterCommand("proc", picolCommandProc, nil)
 	i.RegisterCommand("return", picolCommandReturn, nil)
-
-	/*
-	   int j; char *name[] = {"+","-","*","/",">",">=","<","<=","==","!="};
-	   for (j = 0; j < (int)(sizeof(name)/sizeof(char*)); j++)
-	       picolRegisterCommand(i,name[j],picolCommandMath,NULL);
-	   picolRegisterCommand(i,"set",picolCommandSet,NULL);
-	   picolRegisterCommand(i,"puts",picolCommandPuts,NULL);
-	   picolRegisterCommand(i,"if",picolCommandIf,NULL);
-	   picolRegisterCommand(i,"while",picolCommandWhile,NULL);
-	   picolRegisterCommand(i,"break",picolCommandRetCodes,NULL);
-	   picolRegisterCommand(i,"continue",picolCommandRetCodes,NULL);
-	   picolRegisterCommand(i,"proc",picolCommandProc,NULL);
-	   picolRegisterCommand(i,"return",picolCommandReturn,NULL);
-	*/
 }
