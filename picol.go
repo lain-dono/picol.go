@@ -17,16 +17,13 @@ const (
 type Var string
 type CmdFunc func(i *Interp, argv []string, privdata interface{}) int
 type Cmd struct {
-	name     string
 	fn       CmdFunc
 	privdata interface{}
 }
-
 type CallFrame struct {
 	vars   map[string]Var
 	parent *CallFrame
 }
-
 type Interp struct {
 	level     int
 	callframe *CallFrame
@@ -51,7 +48,7 @@ func (i *Interp) SetVar(name, val string) {
 	i.callframe.vars[name] = Var(val)
 }
 
-func (i *Interp) GetCommand(name string) *Cmd {
+func (i *Interp) Command(name string) *Cmd {
 	v, ok := i.commands[name]
 	if !ok {
 		return nil
@@ -60,13 +57,13 @@ func (i *Interp) GetCommand(name string) *Cmd {
 }
 
 func (i *Interp) RegisterCommand(name string, fn CmdFunc, privdata interface{}) int {
-	c := i.GetCommand(name)
+	c := i.Command(name)
 	if c != nil {
 		i.Result = fmt.Sprintf("Command '%s' already defined", name)
 		return PICOL_ERR
 	}
 
-	i.commands[name] = Cmd{name, fn, privdata}
+	i.commands[name] = Cmd{fn, privdata}
 	return PICOL_OK
 }
 
@@ -80,11 +77,10 @@ func (i *Interp) Eval(t string) int {
 	for {
 		prevtype := p.type_
 		// XXX
-		_ = p.GetToken()
+		t = p.GetToken()
 		if p.type_ == PT_EOF {
 			break
 		}
-		t := p.text[p.start : p.end+1]
 
 		switch p.type_ {
 		case PT_VAR:
@@ -110,7 +106,7 @@ func (i *Interp) Eval(t string) int {
 		if p.type_ == PT_EOL {
 			prevtype = p.type_
 			if len(argv) != 0 {
-				c := i.GetCommand(argv[0])
+				c := i.Command(argv[0])
 				if c == nil {
 					i.Result = fmt.Sprintf("No such command '%s'", argv[0])
 					return PICOL_ERR
@@ -137,7 +133,7 @@ func (i *Interp) Eval(t string) int {
 
 /* ACTUAL COMMANDS! */
 func ArityErr(i *Interp, name string, argv []string) int {
-	i.Result = fmt.Sprintf("Wrong number of args for %s", name, argv)
+	i.Result = fmt.Sprintf("Wrong number of args for %s %s", name, argv)
 	return PICOL_ERR
 }
 
@@ -145,14 +141,9 @@ func CommandMath(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
 		return ArityErr(i, argv[0], argv)
 	}
-	//*
 	a, _ := strconv.Atoi(argv[1])
 	b, _ := strconv.Atoi(argv[2])
-	var c int //*/
-	/*
-		a, _ := strconv.ParseFloat(argv[1], 64)
-		b, _ := strconv.ParseFloat(argv[2], 64)
-		var c float64 //*/
+	var c int
 	switch {
 	case argv[0] == "+":
 		c = a + b
@@ -199,14 +190,6 @@ func CommandSet(i *Interp, argv []string, pd interface{}) int {
 	}
 	i.SetVar(argv[1], argv[2])
 	i.Result = argv[2]
-	return PICOL_OK
-}
-
-func CommandPuts(i *Interp, argv []string, pd interface{}) int {
-	if len(argv) != 2 {
-		return ArityErr(i, argv[0], argv)
-	}
-	fmt.Println(argv[1])
 	return PICOL_OK
 }
 
@@ -283,6 +266,7 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 
 	done := false
 	i.callframe = &CallFrame{vars: make(map[string]Var), parent: i.callframe}
+	defer DropCallFrame(i) // remove the called proc callframe
 
 	err := 0
 
@@ -306,7 +290,8 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 		}
 		arity++
 		if arity > len(argv)-1 {
-			goto arityerr
+			i.Result = fmt.Sprintf("Proc '%s' called with wrong arg num", argv[0])
+			return PICOL_ERR
 		}
 		i.SetVar(start, argv[arity])
 		if len(p) != 0 {
@@ -318,18 +303,14 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 	}
 
 	if arity != len(argv)-1 {
-		goto arityerr
+		i.Result = fmt.Sprintf("Proc '%s' called with wrong arg num", argv[0])
+		return PICOL_ERR
 	}
 	err = i.Eval(body)
 	if err == PICOL_RETURN {
 		err = PICOL_OK
 	}
-	DropCallFrame(i) // remove the called proc callframe
 	return err
-arityerr:
-	i.Result = fmt.Sprintf("Proc '%s' called with wrong arg num", argv[0])
-	DropCallFrame(i) // remove the called proc callframe
-	return PICOL_ERR
 }
 
 func CommandProc(i *Interp, argv []string, pd interface{}) int {
@@ -357,7 +338,6 @@ func (i *Interp) RegisterCoreCommands() {
 		i.RegisterCommand(n, CommandMath, nil)
 	}
 	i.RegisterCommand("set", CommandSet, nil)
-	i.RegisterCommand("puts", CommandPuts, nil)
 	i.RegisterCommand("if", CommandIf, nil)
 	i.RegisterCommand("while", CommandWhile, nil)
 	i.RegisterCommand("break", CommandRetCodes, nil)
