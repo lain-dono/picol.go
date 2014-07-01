@@ -132,14 +132,14 @@ func (i *Interp) Eval(t string) int {
 }
 
 /* ACTUAL COMMANDS! */
-func ArityErr(i *Interp, name string, argv []string) int {
+func arityErr(i *Interp, name string, argv []string) int {
 	i.Result = fmt.Sprintf("Wrong number of args for %s %s", name, argv)
 	return PICOL_ERR
 }
 
 func CommandMath(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	a, _ := strconv.Atoi(argv[1])
 	b, _ := strconv.Atoi(argv[2])
@@ -186,7 +186,7 @@ func CommandMath(i *Interp, argv []string, pd interface{}) int {
 
 func CommandSet(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	i.SetVar(argv[1], argv[2])
 	i.Result = argv[2]
@@ -195,7 +195,7 @@ func CommandSet(i *Interp, argv []string, pd interface{}) int {
 
 func CommandIf(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 && len(argv) != 5 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	if retcode := i.Eval(argv[1]); retcode != PICOL_OK {
 		return retcode
@@ -210,7 +210,7 @@ func CommandIf(i *Interp, argv []string, pd interface{}) int {
 
 func CommandWhile(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 3 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	for {
 		retcode := i.Eval(argv[1])
@@ -235,7 +235,7 @@ func CommandWhile(i *Interp, argv []string, pd interface{}) int {
 
 func CommandRetCodes(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 1 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	switch argv[0] {
 	case "break":
@@ -315,14 +315,14 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 
 func CommandProc(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 4 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	return i.RegisterCommand(argv[1], CommandCallProc, []string{argv[2], argv[3]})
 }
 
 func CommandReturn(i *Interp, argv []string, pd interface{}) int {
 	if len(argv) != 1 && len(argv) != 2 {
-		return ArityErr(i, argv[0], argv)
+		return arityErr(i, argv[0], argv)
 	}
 	var r string
 	if len(argv) == 2 {
