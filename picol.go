@@ -246,10 +246,6 @@ func CommandRetCodes(i *Interp, argv []string, pd interface{}) int {
 	return PICOL_OK
 }
 
-func DropCallFrame(i *Interp) {
-	i.callframe = i.callframe.parent
-}
-
 func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 	var x []string
 
@@ -266,7 +262,7 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) int {
 
 	done := false
 	i.callframe = &CallFrame{vars: make(map[string]Var), parent: i.callframe}
-	defer DropCallFrame(i) // remove the called proc callframe
+	defer func() { i.callframe = i.callframe.parent }() // remove the called proc callframe
 
 	err := 0
 
