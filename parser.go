@@ -1,6 +1,4 @@
-package main
-
-//import "fmt"
+package picol
 
 const (
 	PT_ESC = iota
