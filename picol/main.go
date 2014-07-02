@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../../picol.go"
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/lain-dono/picol.go"
 	"io/ioutil"
 	"os"
 )
