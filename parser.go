@@ -15,11 +15,6 @@ const (
 	PT_EOF
 )
 
-type Token struct {
-	Text string
-	T    int
-}
-
 type Parser struct {
 	text              string
 	p, start, end, ln int
@@ -62,13 +57,11 @@ func (p *Parser) parseSep() string {
 func (p *Parser) parseEol() string {
 	p.start = p.p
 
-Loop:
 	for ; p.p < len(p.text); p.next() {
-		switch {
-		case p.current() == ';':
-		case unicode.IsSpace(p.current()):
-		default:
-			break Loop
+		if p.current() == ';' || unicode.IsSpace(p.current()) {
+			// pass
+		} else {
+			break
 		}
 	}
 
@@ -116,7 +109,6 @@ func (p *Parser) parseVar() string {
 
 	for p.p < len(p.text) {
 		c := p.current()
-		//if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
 		if unicode.IsLetter(c) || unicode.IsDigit(c) || c == '_' {
 			p.next()
 			continue
@@ -186,13 +178,8 @@ Loop:
 			if p.ln >= 2 {
 				p.next()
 			}
-		case '$':
-		case '[':
+		case '$', '[':
 			break Loop
-		case ' ', '\t', '\n', '\r', ';':
-			if p.insidequote == 0 {
-				break Loop
-			}
 		case '"':
 			if p.insidequote != 0 {
 				p.end = p.p
@@ -202,6 +189,13 @@ Loop:
 				return p.token()
 			}
 		}
+
+		if p.current() == ';' || unicode.IsSpace(p.current()) {
+			if p.insidequote == 0 {
+				break Loop
+			}
+		}
+
 		p.next()
 	}
 
