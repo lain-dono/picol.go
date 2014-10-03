@@ -40,9 +40,12 @@ func (i *Interp) Var(name string) (Var, bool) {
 	v, ok := i.callframe.vars[name]
 	return v, ok
 }
-
 func (i *Interp) SetVar(name, val string) {
 	i.callframe.vars[name] = Var(val)
+}
+
+func (i *Interp) UnsetVar(name string) {
+	delete(i.callframe.vars, name)
 }
 
 func (i *Interp) Command(name string) *Cmd {

@@ -64,6 +64,14 @@ func CommandSet(i *Interp, argv []string, pd interface{}) (string, error) {
 	return argv[2], nil
 }
 
+func CommandUnset(i *Interp, argv []string, pd interface{}) (string, error) {
+	if len(argv) != 2 {
+		return "", ArityErr(i, argv[0], argv)
+	}
+	i.UnsetVar(argv[1])
+	return "", nil
+}
+
 func CommandIf(i *Interp, argv []string, pd interface{}) (string, error) {
 	if len(argv) != 3 && len(argv) != 5 {
 		return "", ArityErr(i, argv[0], argv)
@@ -186,6 +194,7 @@ func (i *Interp) RegisterCoreCommands() {
 		i.RegisterCommand(n, CommandMath, nil)
 	}
 	i.RegisterCommand("set", CommandSet, nil)
+	i.RegisterCommand("unset", CommandUnset, nil)
 	i.RegisterCommand("if", CommandIf, nil)
 	i.RegisterCommand("while", CommandWhile, nil)
 	i.RegisterCommand("break", CommandRetCodes, nil)
