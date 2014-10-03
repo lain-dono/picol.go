@@ -121,10 +121,6 @@ func CommandRetCodes(i *Interp, argv []string, pd interface{}) (string, error) {
 	return "", nil
 }
 
-func DropCallFrame(i *Interp) {
-	i.callframe = i.callframe.parent
-}
-
 func CommandCallProc(i *Interp, argv []string, pd interface{}) (string, error) {
 	var x []string
 
@@ -139,9 +135,11 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) (string, error) {
 	p := alist[:]
 	arity := 0
 
+	fmt.Println("CallProc alist", alist, "body", body)
+
 	done := false
 	i.callframe = &CallFrame{vars: make(map[string]Var), parent: i.callframe}
-	defer DropCallFrame(i) // remove the called proc callframe
+	defer func() { i.callframe = i.callframe.parent }() // remove the called proc callframe
 
 	for {
 		start := p
@@ -222,5 +220,5 @@ func (i *Interp) RegisterCoreCommands() {
 	i.RegisterCommand("continue", CommandRetCodes, nil)
 	i.RegisterCommand("proc", CommandProc, nil)
 	i.RegisterCommand("return", CommandReturn, nil)
-	i.RegisterCommand("error", CommandReturn, nil)
+	i.RegisterCommand("error", CommandError, nil)
 }
