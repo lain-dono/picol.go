@@ -7,8 +7,6 @@ import (
 )
 
 var (
-	//PICOL_OK = iota
-	//PICOL_ERR
 	PICOL_RETURN   = errors.New("RETURN")
 	PICOL_BREAK    = errors.New("BREAK")
 	PICOL_CONTINUE = errors.New("CONTINUE")
