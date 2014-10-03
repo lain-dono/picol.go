@@ -4,13 +4,12 @@ Original http://oldblog.antirez.com/post/picol.html
 
 Sample use:
 ```golang
-func CommandPuts(i *picol.Interp, argv []string, pd interface{}) int {
+func CommandPuts(i *picol.Interp, argv []string, pd interface{}) (string, error) {
 	if len(argv) != 2 {
-		i.Result = fmt.Sprintf("Wrong number of args for %s %s", argv[0], argv)
-		return picol.PICOL_ERR
+		return "", fmt.Errorf("Wrong number of args for %s %s", argv[0], argv)
 	}
 	fmt.Println(argv[1])
-	return picol.PICOL_OK
+	return "", nil
 }
 ...
 	interp := picol.InitInterp()
@@ -19,8 +18,10 @@ func CommandPuts(i *picol.Interp, argv []string, pd interface{}) int {
 	// add user function
 	interp.RegisterCommand("puts", CommandPuts, nil)
 	// eval
-	retcode := interp.Eval(string(buf))
-	if retcode != picol.PICOL_OK {
-		fmt.Printf("[%d] %s\n", retcode, interp.Result)
+	result, err := interp.Eval(string(buf))
+	if err != nil {
+		fmt.Println("ERROR", err, result)
+	} else {
+		fmt.Println(result)
 	}
 ```
