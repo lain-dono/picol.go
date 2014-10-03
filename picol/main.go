@@ -1,23 +1,22 @@
 package main
 
 import (
-	"../../picol.go"
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/lain-dono/picol.go"
 	"io/ioutil"
 	"os"
 )
 
 var fname = flag.String("f", "", "file name")
 
-func CommandPuts(i *picol.Interp, argv []string, pd interface{}) int {
+func CommandPuts(i *picol.Interp, argv []string, pd interface{}) (string, error) {
 	if len(argv) != 2 {
-		i.Result = fmt.Sprintf("Wrong number of args for %s %s", argv[0], argv)
-		return picol.PICOL_ERR
+		return "", fmt.Errorf("Wrong number of args for %s %s", argv[0], argv)
 	}
 	fmt.Println(argv[1])
-	return picol.PICOL_OK
+	return "", nil
 }
 
 func main() {
@@ -28,18 +27,18 @@ func main() {
 
 	buf, err := ioutil.ReadFile(*fname)
 	if err == nil {
-		retcode := interp.Eval(string(buf))
-		if retcode != picol.PICOL_OK {
-			fmt.Printf("[%d] %s\n", retcode, interp.Result)
+		result, err := interp.Eval(string(buf))
+		if err != nil {
+			fmt.Println("ERRROR", result, err)
 		}
 	} else {
 		for {
 			fmt.Print("picol> ")
 			scanner := bufio.NewReader(os.Stdin)
 			clibuf, _ := scanner.ReadString('\n')
-			retcode := interp.Eval(clibuf[:len(clibuf)-1])
-			if len(interp.Result) != 0 {
-				fmt.Printf("[%d] %s\n", retcode, interp.Result)
+			result, err := interp.Eval(clibuf[:len(clibuf)-1])
+			if len(result) != 0 {
+				fmt.Println("ERRROR", result, err)
 			}
 		}
 	}

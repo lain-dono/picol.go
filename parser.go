@@ -24,7 +24,7 @@ type Parser struct {
 	text              string
 	p, start, end, ln int
 	insidequote       int
-	type_             int
+	Type              int
 }
 
 func InitParser(text string) *Parser {
@@ -54,25 +54,26 @@ func (p *Parser) parseSep() string {
 			break
 		}
 	}
-	p.end = p.p - 1
-	p.type_ = PT_SEP
+	p.end = p.p
+	p.Type = PT_SEP
 	return p.token()
 }
 
 func (p *Parser) parseEol() string {
 	p.start = p.p
 
+Loop:
 	for ; p.p < len(p.text); p.next() {
 		switch {
 		case p.current() == ';':
 		case unicode.IsSpace(p.current()):
 		default:
-			break
+			break Loop
 		}
 	}
 
 	p.end = p.p
-	p.type_ = PT_EOL
+	p.Type = PT_EOL
 	return p.token()
 }
 
@@ -102,7 +103,7 @@ Loop:
 		p.next()
 	}
 	p.end = p.p
-	p.type_ = PT_CMD
+	p.Type = PT_CMD
 	if p.p < len(p.text) && p.current() == ']' {
 		p.next()
 	}
@@ -126,10 +127,10 @@ func (p *Parser) parseVar() string {
 	if p.start == p.p { // It's just a single char string "$"
 		p.start = p.p - 1
 		p.end = p.p
-		p.type_ = PT_STR
+		p.Type = PT_STR
 	} else {
 		p.end = p.p
-		p.type_ = PT_VAR
+		p.Type = PT_VAR
 	}
 	return p.token()
 }
@@ -159,12 +160,12 @@ Loop:
 	if p.ln != 0 { // Skip final closed brace
 		p.next()
 	}
-	p.type_ = PT_STR
+	p.Type = PT_STR
 	return p.token()
 }
 
 func (p *Parser) parseString() string {
-	newword := p.type_ == PT_SEP || p.type_ == PT_EOL || p.type_ == PT_STR
+	newword := p.Type == PT_SEP || p.Type == PT_EOL || p.Type == PT_STR
 
 	if c := p.current(); newword && c == '{' {
 		return p.parseBrace()
@@ -195,7 +196,7 @@ Loop:
 		case '"':
 			if p.insidequote != 0 {
 				p.end = p.p
-				p.type_ = PT_ESC
+				p.Type = PT_ESC
 				p.next()
 				p.insidequote = 0
 				return p.token()
@@ -205,7 +206,7 @@ Loop:
 	}
 
 	p.end = p.p
-	p.type_ = PT_ESC
+	p.Type = PT_ESC
 	return p.token() /* unreached */
 }
 
@@ -219,10 +220,10 @@ func (p *Parser) parseComment() string {
 func (p *Parser) GetToken() string {
 	for {
 		if p.ln == 0 {
-			if p.type_ != PT_EOL && p.type_ != PT_EOF {
-				p.type_ = PT_EOL
+			if p.Type != PT_EOL && p.Type != PT_EOF {
+				p.Type = PT_EOL
 			} else {
-				p.type_ = PT_EOF
+				p.Type = PT_EOF
 			}
 			return p.token()
 		}
@@ -243,7 +244,7 @@ func (p *Parser) GetToken() string {
 		case '$':
 			return p.parseVar()
 		case '#':
-			if p.type_ == PT_EOL {
+			if p.Type == PT_EOL {
 				p.parseComment()
 				continue
 			}
