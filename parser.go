@@ -1,5 +1,10 @@
 package picol
 
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
 const (
 	PT_ESC = iota
 	PT_STR
@@ -9,6 +14,11 @@ const (
 	PT_EOL
 	PT_EOF
 )
+
+type Token struct {
+	Text string
+	T    int
+}
 
 type Parser struct {
 	text              string
@@ -22,8 +32,14 @@ func InitParser(text string) *Parser {
 }
 
 func (p *Parser) next() {
-	p.p++
-	p.ln--
+	_, w := utf8.DecodeRuneInString(p.text[p.p:])
+	p.p += w
+	p.ln -= w
+}
+
+func (p *Parser) current() rune {
+	r, _ := utf8.DecodeRuneInString(p.text[p.p:])
+	return r
 }
 
 func (p *Parser) token() (t string) {
@@ -33,14 +49,10 @@ func (p *Parser) token() (t string) {
 
 func (p *Parser) parseSep() string {
 	p.start = p.p
-Loop:
-	for p.p != len(p.text) {
-		switch p.text[p.p] {
-		case ' ', '\t', '\n', '\r':
-		default:
-			break Loop
+	for ; p.p < len(p.text); p.next() {
+		if !unicode.IsSpace(p.current()) {
+			break
 		}
-		p.next()
 	}
 	p.end = p.p - 1
 	p.type_ = PT_SEP
@@ -49,15 +61,16 @@ Loop:
 
 func (p *Parser) parseEol() string {
 	p.start = p.p
-Loop:
-	for p.p != len(p.text) {
-		switch p.text[p.p] {
-		case ';', ' ', '\t', '\n', '\r':
+
+	for ; p.p < len(p.text); p.next() {
+		switch {
+		case p.current() == ';':
+		case unicode.IsSpace(p.current()):
 		default:
-			break Loop
+			break
 		}
-		p.next()
 	}
+
 	p.end = p.p
 	p.type_ = PT_EOL
 	return p.token()
@@ -72,27 +85,25 @@ Loop:
 		switch {
 		case p.ln == 0:
 			break Loop
-		case p.text[p.p] == '[' && blevel == 0:
+		case p.current() == '[' && blevel == 0:
 			level++
-		case p.text[p.p] == ']' && blevel == 0:
+		case p.current() == ']' && blevel == 0:
 			level--
 			if level == 0 {
 				break Loop
 			}
-		case p.text[p.p] == '\\':
+		case p.current() == '\\':
 			p.next()
-		case p.text[p.p] == '{':
+		case p.current() == '{':
 			blevel++
-		case p.text[p.p] == '}':
-			if blevel != 0 {
-				blevel--
-			}
+		case p.current() == '}' && blevel != 0:
+			blevel--
 		}
 		p.next()
 	}
 	p.end = p.p
 	p.type_ = PT_CMD
-	if p.p != len(p.text) && p.text[p.p] == ']' {
+	if p.p < len(p.text) && p.current() == ']' {
 		p.next()
 	}
 	return p.token()
@@ -101,14 +112,17 @@ Loop:
 func (p *Parser) parseVar() string {
 	p.next() // skip the $
 	p.start = p.p
-	for p.p != len(p.text) {
-		c := p.text[p.p]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+
+	for p.p < len(p.text) {
+		c := p.current()
+		//if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+		if unicode.IsLetter(c) || unicode.IsDigit(c) || c == '_' {
 			p.next()
 			continue
 		}
 		break
 	}
+
 	if p.start == p.p { // It's just a single char string "$"
 		p.start = p.p - 1
 		p.end = p.p
@@ -126,8 +140,8 @@ func (p *Parser) parseBrace() string {
 	p.start = p.p
 
 Loop:
-	for p.p != len(p.text) {
-		c := p.text[p.p]
+	for p.p < len(p.text) {
+		c := p.current()
 		switch {
 		case p.ln >= 2 && c == '\\':
 			p.next()
@@ -151,19 +165,22 @@ Loop:
 
 func (p *Parser) parseString() string {
 	newword := p.type_ == PT_SEP || p.type_ == PT_EOL || p.type_ == PT_STR
-	if c := p.text[p.p]; newword && c == '{' {
+
+	if c := p.current(); newword && c == '{' {
 		return p.parseBrace()
 	} else if newword && c == '"' {
 		p.insidequote = 1
 		p.next() // skip
 	}
+
 	p.start = p.p
+
 Loop:
 	for {
 		if p.ln == 0 {
 			break Loop
 		}
-		switch p.text[p.p] {
+		switch p.current() {
 		case '\\':
 			if p.ln >= 2 {
 				p.next()
@@ -186,13 +203,14 @@ Loop:
 		}
 		p.next()
 	}
+
 	p.end = p.p
 	p.type_ = PT_ESC
 	return p.token() /* unreached */
 }
 
 func (p *Parser) parseComment() string {
-	for p.ln != 0 && p.text[p.p] != '\n' {
+	for p.ln != 0 && p.current() != '\n' {
 		p.next()
 	}
 	return p.token()
@@ -209,7 +227,7 @@ func (p *Parser) GetToken() string {
 			return p.token()
 		}
 
-		switch p.text[p.p] {
+		switch p.current() {
 		case ' ', '\t', '\r':
 			if p.insidequote != 0 {
 				return p.parseString()
