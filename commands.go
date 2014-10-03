@@ -3,6 +3,7 @@ package picol
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func ArityErr(i *Interp, name string, argv []string) error {
@@ -130,52 +131,23 @@ func CommandCallProc(i *Interp, argv []string, pd interface{}) (string, error) {
 		return "", nil
 	}
 
-	alist := x[0]
-	body := x[1]
-	p := alist[:]
-	arity := 0
-
-	fmt.Println("CallProc alist", alist, "body", body)
-
-	done := false
 	i.callframe = &CallFrame{vars: make(map[string]Var), parent: i.callframe}
 	defer func() { i.callframe = i.callframe.parent }() // remove the called proc callframe
 
-	for {
-		start := p
-		for len(p) != 0 && p[0] != ' ' {
-			p = p[1:]
-		}
-		if len(p) != 0 && p == start {
-			p = p[1:]
+	arity := 0
+	for _, arg := range strings.Split(x[0], " ") {
+		if len(arg) == 0 {
 			continue
 		}
-
-		if p == start {
-			break
-		}
-		if len(p) == 0 {
-			done = true
-		} else {
-			p = p[1:1]
-		}
 		arity++
-		if arity > len(argv)-1 {
-			return "", fmt.Errorf("Proc '%s' called with wrong arg num", argv[0])
-		}
-		i.SetVar(start, argv[arity])
-		if len(p) != 0 {
-			p = p[1:]
-		}
-		if done {
-			break
-		}
+		i.SetVar(arg, argv[arity])
 	}
 
 	if arity != len(argv)-1 {
 		return "", fmt.Errorf("Proc '%s' called with wrong arg num", argv[0])
 	}
 
+	body := x[1]
 	result, err := i.Eval(body)
 	if err == PICOL_RETURN {
 		err = nil
