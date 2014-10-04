@@ -1,6 +1,7 @@
 package picol
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -107,9 +108,14 @@ func (p *Parser) parseVar() string {
 	p.next() // skip the $
 	p.start = p.p
 
+	if p.current() == '{' {
+		p.Type = PT_VAR
+		return p.parseBrace()
+	}
+
 	for p.p < len(p.text) {
 		c := p.current()
-		if unicode.IsLetter(c) || unicode.IsDigit(c) || c == '_' {
+		if unicode.IsLetter(c) || ('0' <= c && c <= '9') || c == '_' {
 			p.next()
 			continue
 		}
@@ -152,7 +158,6 @@ Loop:
 	if p.ln != 0 { // Skip final closed brace
 		p.next()
 	}
-	p.Type = PT_STR
 	return p.token()
 }
 
@@ -160,6 +165,7 @@ func (p *Parser) parseString() string {
 	newword := p.Type == PT_SEP || p.Type == PT_EOL || p.Type == PT_STR
 
 	if c := p.current(); newword && c == '{' {
+		p.Type = PT_STR
 		return p.parseBrace()
 	} else if newword && c == '"' {
 		p.insidequote = 1
@@ -169,10 +175,7 @@ func (p *Parser) parseString() string {
 	p.start = p.p
 
 Loop:
-	for {
-		if p.ln == 0 {
-			break Loop
-		}
+	for ; p.ln != 0; p.next() {
 		switch p.current() {
 		case '\\':
 			if p.ln >= 2 {
@@ -189,19 +192,16 @@ Loop:
 				return p.token()
 			}
 		}
-
 		if p.current() == ';' || unicode.IsSpace(p.current()) {
 			if p.insidequote == 0 {
 				break Loop
 			}
 		}
-
-		p.next()
 	}
 
 	p.end = p.p
 	p.Type = PT_ESC
-	return p.token() /* unreached */
+	return p.token()
 }
 
 func (p *Parser) parseComment() string {
