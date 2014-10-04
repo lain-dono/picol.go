@@ -37,8 +37,13 @@ func InitInterp() *Interp {
 }
 
 func (i *Interp) Var(name string) (Var, bool) {
-	v, ok := i.callframe.vars[name]
-	return v, ok
+	for frame := i.callframe; frame != nil; frame = frame.parent {
+		v, ok := frame.vars[name]
+		if ok {
+			return v, ok
+		}
+	}
+	return "", false
 }
 func (i *Interp) SetVar(name, val string) {
 	i.callframe.vars[name] = Var(val)
